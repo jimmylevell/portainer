@@ -1,0 +1,58 @@
+version: '3.9'
+
+services:
+  levell-portainer-agent:
+    image: portainer/agent
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/volumes:/var/lib/docker/volumes
+    networks:
+      - agent_network
+    deploy:
+      mode: global
+      placement:
+        constraints: [node.platform.os == linux]
+
+  levell-portainer-web:
+    image: portainer/portainer-ce
+    command: -H tcp://tasks.levell-portainer-agent:9001 --tlsskipverify
+    volumes:
+      - portainerdata:/data
+    networks:
+      - agent_network
+      - traefik-public
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: on-failure
+      labels:
+        - traefik.enable=true # enable traefik
+        - traefik.docker.network=traefik-public # put it in the same network as traefik
+        - traefik.constraint-label=traefik-public # assign the same label as traefik so it can be discovered
+        - traefik.http.routers.levellportainer.rule=Host(`portainer.sys.app.levell.ch`) # listen to port 80 for request to APP_DOMAIN (use together with the line below)
+        - traefik.http.routers.levellportainer.entrypoints=http
+        - traefik.http.routers.levellportainer.middlewares=https-redirect
+        - traefik.http.middlewares.levellportainer.redirectscheme.scheme=https # redirect traffic to https
+        - traefik.http.middlewares.levellportainer.redirectscheme.permanent=true # redirect traffic to https
+        - traefik.http.routers.levellportainer-secured.rule=Host(`portainer.sys.app.levell.ch`) # listen to port 443 for request to APP_DOMAIN (use together with the line below)
+        - traefik.http.routers.levellportainer-secured.entrypoints=https
+        - traefik.http.routers.levellportainer-secured.tls.certresolver=le # use the Let's Encrypt certificate we set up earlier
+        - traefik.http.services.levellportainer-secured.loadbalancer.server.port=9000 # ask Traefik to search for port service container
+     
+networks:
+  agent_network:
+    driver: overlay
+    attachable: true
+  traefik-public:
+    external: true
+
+volumes:
+  portainerdata:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: /srv/docker/portainer
