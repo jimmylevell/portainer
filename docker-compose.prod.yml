@@ -56,3 +56,4 @@ volumes:
       o: bind
       type: none
       device: /srv/docker/portainer
+
